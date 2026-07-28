@@ -5,11 +5,12 @@ import (
 	"os"
 
 	"github.com/Andreezy1/ticket-platform/services/auth/internal/config"
+	"github.com/Andreezy1/ticket-platform/services/auth/internal/logger"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-	Init(slog.LevelInfo)
+	logger.Init(slog.LevelInfo)
 
 	_ = godotenv.Load()
 

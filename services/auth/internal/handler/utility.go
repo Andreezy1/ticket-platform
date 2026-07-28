@@ -2,8 +2,11 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
+
+	"github.com/Andreezy1/ticket-platform/services/auth/internal/domain"
 )
 
 func (h *Handler) writeError(w http.ResponseWriter, status int, msg string) {
@@ -36,24 +39,26 @@ func (h *Handler) decodeJSON(w http.ResponseWriter, r *http.Request, body any) e
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(body); err != nil {
-		slog.Info("decode request error",
-			slog.Any("error", err),
-		)
 		return err
 	}
+
 	return nil
 }
 
 func statusFromErr(err error) int {
 	switch {
-	// case errors.Is(err, domain.ErrNotFound):
-	// 	return http.StatusNotFound
-	// case errors.Is(err, domain.ErrConflict):
-	// 	return http.StatusConflict
-	// case errors.Is(err, domain.ErrValidate):
-	// 	return http.StatusBadRequest
-	// case errors.Is(err, domain.ErrQueueFull):
-	// 	return http.StatusServiceUnavailable
+	case errors.Is(err, domain.ErrNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, domain.ErrConflict):
+		return http.StatusConflict
+	case errors.Is(err, domain.ErrValidate):
+		return http.StatusBadRequest
+	case errors.Is(err, domain.ErrInvalidCredentials):
+		return http.StatusUnauthorized
+	case errors.Is(err, domain.ErrAccountDisabled):
+		return http.StatusForbidden
+	case errors.Is(err, domain.ErrInvalidRefreshToken):
+		return http.StatusUnauthorized
 	default:
 		return http.StatusInternalServerError
 	}

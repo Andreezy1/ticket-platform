@@ -1,4 +1,4 @@
-package main
+package logger
 
 import (
 	"context"
@@ -18,6 +18,7 @@ func Init(level slog.Level) {
 
 func WithFields(ctx context.Context, args ...any) context.Context {
 	l := FromContext(ctx).With(args...)
+
 	return context.WithValue(ctx, ctxKey{}, l)
 }
 
@@ -25,5 +26,6 @@ func FromContext(ctx context.Context) *slog.Logger {
 	if l, ok := ctx.Value(ctxKey{}).(*slog.Logger); ok {
 		return l
 	}
+
 	return slog.Default()
 }

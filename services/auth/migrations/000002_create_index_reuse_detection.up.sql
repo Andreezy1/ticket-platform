@@ -1,0 +1,1 @@
+CREATE INDEX idx_refresh_tokens_reuse_detection ON refresh_tokens(user_id) WHERE revoked_at IS NULL;
