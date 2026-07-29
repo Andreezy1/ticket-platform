@@ -47,6 +47,10 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    volumes:
+      - ./services/auth/keys:/app/keys:ro
+    environment:
+      AUTH_PRIVATE_KEY_PATH: /app/keys/ed25519_private.pem
 
     deploy:
       resources:
