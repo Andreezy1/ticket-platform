@@ -169,7 +169,7 @@ func (s *UserService) Refresh(ctx context.Context, plain string) (*domain.Tokens
 				slog.String("refreshTokenID", refreshToken.ID.String()),
 			}
 			if refreshToken.RevokedAt != nil {
-				attrs = append(attrs, slog.Time("revokedAt", *refreshToken.RevokedAt))
+				attrs = append(attrs, slog.Time("revokedAtyf", *refreshToken.RevokedAt))
 			}
 			log.Warn("token reused", attrs...)
 			if err := s.refreshTokenRepo.RevokeAllForUser(ctx, refreshToken.UserID); err != nil {
