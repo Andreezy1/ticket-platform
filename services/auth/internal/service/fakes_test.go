@@ -15,6 +15,11 @@ var genErr = errors.New("gen error")
 var createErr = errors.New("create error")
 var accessErr = errors.New("access error")
 
+type createUserCall struct {
+	email    string
+	password string
+}
+
 type fakeUserRepo struct {
 	findByIDUser *domain.User
 	findByIDErr  error
@@ -23,10 +28,15 @@ type fakeUserRepo struct {
 	findByEmailUser *domain.User
 	findByEmailErr  error
 	findByEmailArgs []string
+
+	createUser      *domain.User
+	createErr       error
+	createUserCalls []createUserCall
 }
 
 func (u *fakeUserRepo) Create(ctx context.Context, user *domain.UserParams) (*domain.User, error) {
-	return nil, nil
+	u.createUserCalls = append(u.createUserCalls, createUserCall{email: user.Email, password: user.Password})
+	return u.createUser, u.createErr
 }
 func (u *fakeUserRepo) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	u.findByEmailArgs = append(u.findByEmailArgs, email)

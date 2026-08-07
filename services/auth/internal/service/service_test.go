@@ -582,3 +582,118 @@ func TestUserService_Login(t *testing.T) {
 		})
 	}
 }
+
+func TestUserService_Create(t *testing.T) {
+	tests := []struct {
+		name             string
+		mutateUserParams func(u *domain.UserParams)
+		mutateStand      func(s *stand)
+		wantEmail        string
+		wantPassword     string
+		wantErr          error
+		wantCreateCall   int
+		wantUser         bool
+	}{
+		{
+			name: "success",
+			mutateUserParams: func(u *domain.UserParams) {
+				u.Email = "  AbC@mail.Ru "
+			},
+			wantEmail:      "abc@mail.ru",
+			wantPassword:   wantPassword,
+			wantErr:        nil,
+			wantCreateCall: 1,
+			wantUser:       true,
+		},
+		{
+			name: "invalid email",
+			mutateUserParams: func(u *domain.UserParams) {
+				u.Email = "invalidemail"
+			},
+			wantEmail:      "abc@mail.ru",
+			wantPassword:   wantPassword,
+			wantErr:        domain.ErrValidate,
+			wantCreateCall: 0,
+		},
+		{
+			name: "too short password",
+			mutateUserParams: func(u *domain.UserParams) {
+				u.Password = "123"
+			},
+			wantEmail:      "abc@mail.ru",
+			wantPassword:   "123",
+			wantErr:        domain.ErrValidate,
+			wantCreateCall: 0,
+		},
+		{
+			name: "duplicate email",
+			mutateStand: func(s *stand) {
+				s.userRepo.createErr = domain.ErrConflict
+			},
+			wantEmail:      "abc@mail.ru",
+			wantPassword:   wantPassword,
+			wantErr:        domain.ErrConflict,
+			wantCreateCall: 1,
+		},
+		{
+			name: "error from user repo",
+			mutateStand: func(s *stand) {
+				s.userRepo.createErr = repoErr
+			},
+			wantEmail:      "abc@mail.ru",
+			wantPassword:   wantPassword,
+			wantErr:        repoErr,
+			wantCreateCall: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newStand(t, 24*time.Hour, 15*time.Second)
+
+			user := validUserParams()
+			s.userRepo.createUser = newTestUser()
+			if tt.mutateUserParams != nil {
+				tt.mutateUserParams(user)
+			}
+			if tt.mutateStand != nil {
+				tt.mutateStand(s)
+			}
+
+			u, err := s.svc.Create(context.Background(), user)
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Create() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if len(s.userRepo.createUserCalls) != tt.wantCreateCall {
+				t.Fatalf("Create() called Create with %d calls, want %d", len(s.userRepo.createUserCalls), tt.wantCreateCall)
+			}
+
+			if tt.wantCreateCall > 0 {
+				if s.userRepo.createUserCalls[0].email != tt.wantEmail {
+					t.Errorf("Create() called Create with email = %v, want %v", s.userRepo.createUserCalls[0].email, tt.wantEmail)
+				}
+				if err := bcrypt.CompareHashAndPassword([]byte(s.userRepo.createUserCalls[0].password), []byte(user.Password)); err != nil {
+					t.Errorf("password sent to repository is not a valid bcrypt hash of the input")
+				}
+			}
+			if tt.wantPassword != user.Password {
+				t.Errorf("Create() user have password = %v, want %v", user.Password, tt.wantPassword)
+			}
+			if tt.wantUser {
+				if u == nil {
+					t.Fatalf("Create() returned nil user")
+				}
+				if u.Id != testUserID {
+					t.Errorf("Create() return user with id = %v, want %v", u.Id, testUserID)
+				}
+				return
+			}
+			if u != nil {
+				t.Fatalf("Create() returned user")
+			}
+
+		})
+
+	}
+}
