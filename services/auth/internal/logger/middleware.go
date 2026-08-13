@@ -10,13 +10,10 @@ import (
 func WithRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqID := middleware.GetReqID(r.Context())
-
-		l := slog.Default()
+		ctx := r.Context()
 		if reqID != "" {
-			l = l.With(slog.String("request_id", reqID))
+			ctx = WithFields(r.Context(), slog.String("request_id", reqID))
 		}
-
-		ctx := WithFields(r.Context(), l)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
