@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Andreezy1/ticket-platform/services/auth/internal/domain"
+	"github.com/Andreezy1/ticket-platform/services/auth/internal/ratelimit"
 	"github.com/Andreezy1/ticket-platform/services/auth/internal/service"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -21,24 +22,47 @@ var (
 )
 
 type stand struct {
-	svc               *service.UserService
-	userRepo          *fakeUserRepo
-	refreshTokenRepo  *fakeTokenRepo
-	tokens            *fakeManager
-	refreshTokenTTL   time.Duration
-	refreshReuseGrace time.Duration
+	svc              *service.UserService
+	userRepo         *fakeUserRepo
+	refreshTokenRepo *fakeTokenRepo
+	tokens           *fakeManager
+	rateLimit        *fakeRateLimiter
+	refreshParams    service.RefreshParams
+	rateLimitEmail   int
+	rateLimitWindow  time.Duration
 }
 
-func newStand(t *testing.T, refreshTokenTTL time.Duration, refreshReuseGrace time.Duration) *stand {
+func newStand(
+	t *testing.T,
+	refreshTokenTTL time.Duration,
+	refreshReuseGrace time.Duration,
+	rateLimitEmail int,
+	rateLimitWindow time.Duration,
+) *stand {
 	t.Helper()
 	s := &stand{
-		userRepo:          &fakeUserRepo{},
-		refreshTokenRepo:  &fakeTokenRepo{},
-		tokens:            &fakeManager{},
-		refreshTokenTTL:   refreshTokenTTL,
-		refreshReuseGrace: refreshReuseGrace,
+		userRepo:         &fakeUserRepo{},
+		refreshTokenRepo: &fakeTokenRepo{},
+		tokens:           &fakeManager{},
+		rateLimit:        &fakeRateLimiter{allow: true},
+		refreshParams: service.RefreshParams{
+			RefreshTokenTTL:   refreshTokenTTL,
+			RefreshReuseGrace: refreshReuseGrace,
+		},
+		rateLimitEmail:  rateLimitEmail,
+		rateLimitWindow: rateLimitWindow,
 	}
-	s.svc = service.NewUserService(s.userRepo, s.refreshTokenRepo, s.tokens, s.refreshTokenTTL, s.refreshReuseGrace)
+	s.svc = service.NewUserService(
+		s.userRepo,
+		s.refreshTokenRepo,
+		s.tokens,
+		s.refreshParams,
+		service.LoginRateLimitParams{
+			Limiter: s.rateLimit,
+			Limit:   s.rateLimitEmail,
+			Window:  s.rateLimitWindow,
+		},
+	)
 	return s
 }
 
@@ -95,7 +119,7 @@ func TestUserService_Logout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := newStand(t, 0, 0)
+			s := newStand(t, 0, 0, 5, time.Hour)
 			tt.mutate(s)
 			err := s.svc.Logout(context.Background(), tt.enterPlain)
 
@@ -169,7 +193,7 @@ func TestUserService_Refresh_AfterRotation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := newStand(t, 24*time.Hour, 15*time.Second)
+			s := newStand(t, 24*time.Hour, 15*time.Second, 5, time.Hour)
 			tt.mutate(s)
 			tkn, err := s.svc.Refresh(context.Background(), tt.enterPlain)
 
@@ -188,8 +212,8 @@ func TestUserService_Refresh_AfterRotation(t *testing.T) {
 			if s.refreshTokenRepo.rotateCalls[0].newHash != s.tokens.genHash {
 				t.Errorf("Refresh() called Rotate with newHash = %v, want %v", s.refreshTokenRepo.rotateCalls[0].newHash, s.tokens.genHash)
 			}
-			if s.refreshTokenRepo.rotateCalls[0].ttl != s.refreshTokenTTL {
-				t.Errorf("Refresh() called Rotate with ttl = %v, want %v", s.refreshTokenRepo.rotateCalls[0].ttl, s.refreshTokenTTL)
+			if s.refreshTokenRepo.rotateCalls[0].ttl != s.refreshParams.RefreshTokenTTL {
+				t.Errorf("Refresh() called Rotate with ttl = %v, want %v", s.refreshTokenRepo.rotateCalls[0].ttl, s.refreshParams.RefreshTokenTTL)
 			}
 			if len(s.refreshTokenRepo.findByHashArgs) != 0 {
 				t.Errorf("Refresh() called FindByHash when it should not have")
@@ -317,7 +341,7 @@ func TestUserService_Refresh_InvalidToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := newStand(t, 24*time.Hour, 15*time.Second)
+			s := newStand(t, 24*time.Hour, 15*time.Second, 5, time.Hour)
 			refreshToken := newValidRefreshToken()
 			tt.mutateToken(refreshToken)
 			s.refreshTokenRepo.findByHashToken = refreshToken
@@ -520,7 +544,7 @@ func TestUserService_Login(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := newStand(t, 24*time.Hour, 15*time.Second)
+			s := newStand(t, 24*time.Hour, 15*time.Second, 5, time.Hour)
 			s.tokens.genPlain = "new-plain"
 			s.tokens.genHash = "hashed:new-plain"
 			s.tokens.accessToken = "access-token"
@@ -553,8 +577,8 @@ func TestUserService_Login(t *testing.T) {
 				if s.refreshTokenRepo.createCalls[0].tokenHash != s.tokens.genHash {
 					t.Errorf("Login() called Create refresh token with tokenHash = %v, want %v", s.refreshTokenRepo.createCalls[0].tokenHash, s.tokens.genHash)
 				}
-				if s.refreshTokenRepo.createCalls[0].ttl != s.refreshTokenTTL {
-					t.Errorf("Login() called Create refresh token with ttl = %v, want %v", s.refreshTokenRepo.createCalls[0].ttl, s.refreshTokenTTL)
+				if s.refreshTokenRepo.createCalls[0].ttl != s.refreshParams.RefreshTokenTTL {
+					t.Errorf("Login() called Create refresh token with ttl = %v, want %v", s.refreshTokenRepo.createCalls[0].ttl, s.refreshParams.RefreshTokenTTL)
 				}
 			}
 			if !tt.wantToken {
@@ -648,7 +672,7 @@ func TestUserService_Create(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := newStand(t, 24*time.Hour, 15*time.Second)
+			s := newStand(t, 24*time.Hour, 15*time.Second, 5, time.Hour)
 
 			user := validUserParams()
 			s.userRepo.createUser = newTestUser()
@@ -695,5 +719,148 @@ func TestUserService_Create(t *testing.T) {
 
 		})
 
+	}
+}
+
+func TestUserService_Login_RateLimit(t *testing.T) {
+	tests := []struct {
+		name             string
+		mutateUserParams func(u *domain.UserParams)
+		mutateStand      func(s *stand)
+		wantErr          error
+		wantAllowKey     string
+		wantAllowCall    int
+		wantFindByCall   int
+		wantAccessCall   int
+		wantResetCall    int
+	}{
+		{
+			name: "key built from normalized email",
+			mutateUserParams: func(u *domain.UserParams) {
+				u.Email = "  AbC@maIl.RU  "
+			},
+			wantErr:        nil,
+			wantAllowKey:   ratelimit.LoginEmailKey("abc@mail.ru"),
+			wantAllowCall:  1,
+			wantFindByCall: 1,
+			wantAccessCall: 1,
+			wantResetCall:  1,
+		},
+		{
+			name: "nonexistent email still counts against the limit",
+			mutateUserParams: func(u *domain.UserParams) {
+				u.Email = "ghost@mail.ru"
+			},
+			mutateStand: func(s *stand) {
+				s.userRepo.findByEmailErr = domain.ErrNotFound
+			},
+			wantErr:        domain.ErrInvalidCredentials,
+			wantAllowKey:   ratelimit.LoginEmailKey("ghost@mail.ru"),
+			wantAllowCall:  1,
+			wantFindByCall: 1,
+			wantAccessCall: 0,
+			wantResetCall:  0,
+		},
+		{
+			name: "rate limit exhausted",
+			mutateStand: func(s *stand) {
+				s.rateLimit.allow = false
+			},
+			wantErr:        domain.ErrTooManyRequests,
+			wantAllowKey:   ratelimit.LoginEmailKey(wantEmail),
+			wantAllowCall:  1,
+			wantFindByCall: 0,
+			wantAccessCall: 0,
+			wantResetCall:  0,
+		},
+		{
+			name:           "successful login resets the counter",
+			wantErr:        nil,
+			wantAllowKey:   ratelimit.LoginEmailKey(wantEmail),
+			wantAllowCall:  1,
+			wantFindByCall: 1,
+			wantAccessCall: 1,
+			wantResetCall:  1,
+		},
+		{
+			name: "wrong password does not reset",
+			mutateUserParams: func(u *domain.UserParams) {
+				u.Password = "wrongpassword"
+			},
+			wantErr:        domain.ErrInvalidCredentials,
+			wantAllowKey:   ratelimit.LoginEmailKey(wantEmail),
+			wantAllowCall:  1,
+			wantFindByCall: 1,
+			wantAccessCall: 0,
+			wantResetCall:  0,
+		},
+		{
+			name: "banned user does not reset",
+			mutateStand: func(s *stand) {
+				s.userRepo.findByEmailUser.IsActive = false
+			},
+			wantErr:        domain.ErrAccountDisabled,
+			wantAllowKey:   ratelimit.LoginEmailKey(wantEmail),
+			wantAllowCall:  1,
+			wantFindByCall: 1,
+			wantAccessCall: 0,
+			wantResetCall:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newStand(t, 24*time.Hour, 15*time.Second, 5, time.Hour)
+			s.tokens.genPlain = "new-plain"
+			s.tokens.genHash = "hashed:new-plain"
+			s.tokens.accessToken = "access-token"
+
+			user := validUserParams()
+			s.userRepo.findByEmailUser = newTestUser()
+			if tt.mutateUserParams != nil {
+				tt.mutateUserParams(user)
+			}
+			if tt.mutateStand != nil {
+				tt.mutateStand(s)
+			}
+
+			_, err := s.svc.Login(context.Background(), user)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Login() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if len(s.rateLimit.allowCalls) != tt.wantAllowCall {
+				t.Fatalf("Login() called Allow with %d calls, want %d", len(s.rateLimit.allowCalls), tt.wantAllowCall)
+			}
+			if tt.wantAllowCall > 0 {
+				got := s.rateLimit.allowCalls[0]
+				if got.key != tt.wantAllowKey {
+					t.Errorf("Login() called Allow with key = %v, want %v", got.key, tt.wantAllowKey)
+				}
+				if got.limit != s.rateLimitEmail {
+					t.Errorf("Login() called Allow with limit = %v, want %v", got.limit, s.rateLimitEmail)
+				}
+				if got.window != s.rateLimitWindow {
+					t.Errorf("Login() called Allow with window = %v, want %v", got.window, s.rateLimitWindow)
+				}
+			}
+
+			if len(s.userRepo.findByEmailArgs) != tt.wantFindByCall {
+				t.Fatalf("Login() called FindByEmail with %d calls, want %d", len(s.userRepo.findByEmailArgs), tt.wantFindByCall)
+			}
+
+			if len(s.tokens.accessCalls) != tt.wantAccessCall {
+				t.Fatalf("Login() called IssueAccessToken with %d calls, want %d", len(s.tokens.accessCalls), tt.wantAccessCall)
+			}
+
+			if len(s.rateLimit.resetCalls) != tt.wantResetCall {
+				t.Fatalf("Login() called Reset with %d calls, want %d", len(s.rateLimit.resetCalls), tt.wantResetCall)
+			}
+			if tt.wantResetCall > 0 {
+				if s.rateLimit.resetCalls[0] != s.rateLimit.allowCalls[0].key {
+					t.Errorf("Login() called Reset with key = %v, want the same key as Allow = %v", s.rateLimit.resetCalls[0], s.rateLimit.allowCalls[0].key)
+				}
+			}
+		})
 	}
 }

@@ -9,11 +9,11 @@ import (
 	"github.com/Andreezy1/ticket-platform/services/auth/internal/domain"
 )
 
-func (h *Handler) writeError(w http.ResponseWriter, status int, msg string) {
-	h.writeJSON(w, status, map[string]string{"error": msg})
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-func (h *Handler) writeJSON(w http.ResponseWriter, status int, body any) {
+func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if body == nil {
@@ -24,14 +24,14 @@ func (h *Handler) writeJSON(w http.ResponseWriter, status int, body any) {
 	}
 }
 
-func (h *Handler) writeServiceError(w http.ResponseWriter, err error) {
+func writeServiceError(w http.ResponseWriter, err error) {
 	status := statusFromErr(err)
 
 	if status >= http.StatusInternalServerError {
-		h.writeError(w, status, "internal server error")
+		writeError(w, status, "internal server error")
 		return
 	}
-	h.writeError(w, status, err.Error())
+	writeError(w, status, err.Error())
 }
 
 func (h *Handler) decodeJSON(w http.ResponseWriter, r *http.Request, body any) error {
@@ -59,6 +59,8 @@ func statusFromErr(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, domain.ErrInvalidRefreshToken):
 		return http.StatusUnauthorized
+	case errors.Is(err, domain.ErrTooManyRequests):
+		return http.StatusTooManyRequests
 	default:
 		return http.StatusInternalServerError
 	}

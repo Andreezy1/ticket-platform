@@ -8,6 +8,7 @@ import (
 
 	"github.com/Andreezy1/ticket-platform/services/auth/internal/domain"
 	"github.com/Andreezy1/ticket-platform/services/auth/internal/logger"
+	"github.com/Andreezy1/ticket-platform/services/auth/internal/ratelimit"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -42,26 +43,42 @@ type RefreshTokenRepository interface {
 	Rotate(ctx context.Context, oldHash string, newHash string, ttl time.Duration) (userID uuid.UUID, err error)
 }
 
+type RateLimiter interface {
+	Allow(ctx context.Context, key string, limit int, window time.Duration) bool
+	Reset(ctx context.Context, key string)
+}
+
+type LoginRateLimitParams struct {
+	Limiter RateLimiter
+	Limit   int
+	Window  time.Duration
+}
+
+type RefreshParams struct {
+	RefreshTokenTTL   time.Duration
+	RefreshReuseGrace time.Duration
+}
+
 type UserService struct {
-	userRepo          UserRepository
-	refreshTokenRepo  RefreshTokenRepository
-	tokens            ManagerToken
-	refreshTokenTTL   time.Duration
-	refreshReuseGrace time.Duration
+	userRepo         UserRepository
+	refreshTokenRepo RefreshTokenRepository
+	tokens           ManagerToken
+	refreshParams    RefreshParams
+	rateLimit        LoginRateLimitParams
 }
 
 func NewUserService(userRepo UserRepository,
 	refreshTokenRepo RefreshTokenRepository,
 	tokens ManagerToken,
-	refreshTokenTTL time.Duration,
-	refreshReuseGrace time.Duration,
+	refreshParams RefreshParams,
+	rateLimit LoginRateLimitParams,
 ) *UserService {
 	return &UserService{
-		userRepo:          userRepo,
-		refreshTokenRepo:  refreshTokenRepo,
-		tokens:            tokens,
-		refreshTokenTTL:   refreshTokenTTL,
-		refreshReuseGrace: refreshReuseGrace,
+		userRepo:         userRepo,
+		refreshTokenRepo: refreshTokenRepo,
+		tokens:           tokens,
+		refreshParams:    refreshParams,
+		rateLimit:        rateLimit,
 	}
 }
 
@@ -89,6 +106,12 @@ func (s *UserService) Login(ctx context.Context, user *domain.UserParams) (*doma
 	if err := user.Validate(); err != nil {
 		return nil, err
 	}
+
+	key := ratelimit.LoginEmailKey(user.Email)
+	if !s.rateLimit.Limiter.Allow(ctx, key, s.rateLimit.Limit, s.rateLimit.Window) {
+		return nil, domain.ErrTooManyRequests
+	}
+
 	u, err := s.userRepo.FindByEmail(ctx, user.Email)
 	switch {
 	case err == nil:
@@ -105,7 +128,7 @@ func (s *UserService) Login(ctx context.Context, user *domain.UserParams) (*doma
 	}
 
 	if !u.IsActive {
-		log.Info("Try enter in diactiveted account", slog.String("id", u.Id.String()))
+		log.Info("Try enter in deactivated account", slog.String("id", u.Id.String()))
 		return nil, domain.ErrAccountDisabled
 	}
 
@@ -119,9 +142,12 @@ func (s *UserService) Login(ctx context.Context, user *domain.UserParams) (*doma
 		return nil, err
 	}
 
-	if err := s.refreshTokenRepo.Create(ctx, u.Id, refreshHash, s.refreshTokenTTL); err != nil {
+	if err := s.refreshTokenRepo.Create(ctx, u.Id, refreshHash, s.refreshParams.RefreshTokenTTL); err != nil {
 		return nil, err
 	}
+
+	s.rateLimit.Limiter.Reset(ctx, key)
+
 	return &domain.Tokens{AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
@@ -148,7 +174,7 @@ func (s *UserService) Refresh(ctx context.Context, plain string) (*domain.Tokens
 	if err != nil {
 		return nil, err
 	}
-	userID, err := s.refreshTokenRepo.Rotate(ctx, oldHash, newHash, s.refreshTokenTTL)
+	userID, err := s.refreshTokenRepo.Rotate(ctx, oldHash, newHash, s.refreshParams.RefreshTokenTTL)
 	if errors.Is(err, domain.ErrTokenNotUsable) {
 		refreshToken, nowDB, err := s.refreshTokenRepo.FindByHash(ctx, oldHash)
 		if errors.Is(err, domain.ErrNotFound) {
@@ -161,9 +187,9 @@ func (s *UserService) Refresh(ctx context.Context, plain string) (*domain.Tokens
 		case refreshToken.WasRotated() && refreshToken.IsExpired(nowDB):
 			log.Warn("token rotated and expired", slog.String("userID", refreshToken.UserID.String()))
 			return nil, domain.ErrInvalidRefreshToken
-		case refreshToken.WasRotated() && refreshToken.IsRevokedInReuseGraceWindow(nowDB, s.refreshReuseGrace):
+		case refreshToken.WasRotated() && refreshToken.IsRevokedInReuseGraceWindow(nowDB, s.refreshParams.RefreshReuseGrace):
 			return nil, domain.ErrInvalidRefreshToken
-		case refreshToken.WasRotated() && !refreshToken.IsRevokedInReuseGraceWindow(nowDB, s.refreshReuseGrace):
+		case refreshToken.WasRotated() && !refreshToken.IsRevokedInReuseGraceWindow(nowDB, s.refreshParams.RefreshReuseGrace):
 			attrs := []any{
 				slog.String("userID", refreshToken.UserID.String()),
 				slog.String("refreshTokenID", refreshToken.ID.String()),

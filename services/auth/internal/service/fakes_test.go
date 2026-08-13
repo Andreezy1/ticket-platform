@@ -131,3 +131,27 @@ func (m *fakeManager) GenerateRefreshToken() (plain string, hash string, err err
 func (m *fakeManager) HashRefreshToken(plain string) string {
 	return "hashed:" + plain
 }
+
+type fakeRateLimiter struct {
+	allow bool
+
+	allowCalls []fakeAllowCall
+	resetCalls []string
+}
+
+type fakeAllowCall struct {
+	key    string
+	limit  int
+	window time.Duration
+}
+
+var _ service.RateLimiter = (*fakeRateLimiter)(nil)
+
+func (f *fakeRateLimiter) Allow(_ context.Context, key string, limit int, window time.Duration) bool {
+	f.allowCalls = append(f.allowCalls, fakeAllowCall{key: key, limit: limit, window: window})
+	return f.allow
+}
+
+func (f *fakeRateLimiter) Reset(_ context.Context, key string) {
+	f.resetCalls = append(f.resetCalls, key)
+}

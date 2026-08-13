@@ -10,6 +10,7 @@ var (
 	ErrInvalidCredentials    = errors.New("invalid credentials")
 	ErrAccountDisabled       = errors.New("account disabled")
 	ErrInvalidRefreshToken   = errors.New("invalid refresh token")
+	ErrTooManyRequests       = errors.New("too many requests")
 
 	ErrTokenNotUsable = errors.New("token not usable")
 )

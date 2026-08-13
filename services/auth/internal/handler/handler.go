@@ -29,7 +29,10 @@ type Handler struct {
 	ttl         time.Duration
 }
 
-func NewHandler(userService UserService, tokenJWKS TokenJWKS, ttl time.Duration) *Handler {
+func NewHandler(userService UserService,
+	tokenJWKS TokenJWKS,
+	ttl time.Duration,
+) *Handler {
 	return &Handler{
 		userService: userService,
 		tokenJWKS:   tokenJWKS,
@@ -37,17 +40,17 @@ func NewHandler(userService UserService, tokenJWKS TokenJWKS, ttl time.Duration)
 	}
 }
 
-func (h *Handler) RegisterRoutes(r chi.Router) {
+func (h *Handler) RegisterRoutes(r chi.Router, ipLimit func(http.Handler) http.Handler) {
 	r.Post("/register", h.create)
 	r.Get("/healthz", h.healthCheck)
 	r.Get("/.well-known/jwks.json", h.jwks)
-	r.Post("/login", h.login)
+	r.With(ipLimit).Post("/login", h.login)
 	r.Post("/refresh", h.refresh)
 	r.Post("/logout", h.logout)
 }
 
 func (h *Handler) healthCheck(w http.ResponseWriter, r *http.Request) {
-	h.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -56,16 +59,16 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(ctx)
 	if err := h.decodeJSON(w, r, &req); err != nil {
 		log.Error("decode request error", slog.Any("error", err))
-		h.writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	user, err := h.userService.Create(ctx, req.toDomain())
 	if err != nil {
 		log.Info("create user error", slog.Any("error", err))
-		h.writeServiceError(w, err)
+		writeServiceError(w, err)
 		return
 	}
-	h.writeJSON(w, http.StatusCreated, newCreateUserResponse(user))
+	writeJSON(w, http.StatusCreated, newCreateUserResponse(user))
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -74,12 +77,12 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(ctx)
 	if err := h.decodeJSON(w, r, &u); err != nil {
 		log.Error("decode request error", slog.Any("error", err))
-		h.writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	tokens, err := h.userService.Login(ctx, u.toDomain())
 	if err != nil {
-		h.writeServiceError(w, err)
+		writeServiceError(w, err)
 		return
 	}
 	response := tokensResponse{
@@ -88,7 +91,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		TokenType:    "Bearer",
 		ExpiresIn:    int(h.ttl.Seconds()),
 	}
-	h.writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
@@ -97,12 +100,12 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(ctx)
 	if err := h.decodeJSON(w, r, &refreshToken); err != nil {
 		log.Error("decode request error", slog.Any("error", err))
-		h.writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	newTokens, err := h.userService.Refresh(ctx, refreshToken.RefreshToken)
 	if err != nil {
-		h.writeServiceError(w, err)
+		writeServiceError(w, err)
 		return
 	}
 	response := tokensResponse{
@@ -111,7 +114,7 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 		TokenType:    "Bearer",
 		ExpiresIn:    int(h.ttl.Seconds()),
 	}
-	h.writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
@@ -120,11 +123,11 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(ctx)
 	if err := h.decodeJSON(w, r, &refreshToken); err != nil {
 		log.Error("decode request error", slog.Any("error", err))
-		h.writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if err := h.userService.Logout(ctx, refreshToken.RefreshToken); err != nil {
-		h.writeServiceError(w, err)
+		writeServiceError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -133,5 +136,5 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) jwks(w http.ResponseWriter, r *http.Request) {
 	keys := h.tokenJWKS.JWKS()
 	w.Header().Set("Cache-Control", "public, max-age=3600")
-	h.writeJSON(w, http.StatusOK, newJWKSResponse(keys))
+	writeJSON(w, http.StatusOK, newJWKSResponse(keys))
 }
