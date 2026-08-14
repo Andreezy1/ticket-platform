@@ -57,7 +57,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var req userRequest
 	ctx := r.Context()
 	log := logger.FromContext(ctx)
-	if err := h.decodeJSON(w, r, &req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		log.Error("decode request error", slog.Any("error", err))
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -75,7 +75,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	var u userRequest
 	ctx := r.Context()
 	log := logger.FromContext(ctx)
-	if err := h.decodeJSON(w, r, &u); err != nil {
+	if err := decodeJSON(w, r, &u); err != nil {
 		log.Error("decode request error", slog.Any("error", err))
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -98,7 +98,7 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 	var refreshToken refreshRequest
 	ctx := r.Context()
 	log := logger.FromContext(ctx)
-	if err := h.decodeJSON(w, r, &refreshToken); err != nil {
+	if err := decodeJSON(w, r, &refreshToken); err != nil {
 		log.Error("decode request error", slog.Any("error", err))
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -121,7 +121,7 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	var refreshToken refreshRequest
 	ctx := r.Context()
 	log := logger.FromContext(ctx)
-	if err := h.decodeJSON(w, r, &refreshToken); err != nil {
+	if err := decodeJSON(w, r, &refreshToken); err != nil {
 		log.Error("decode request error", slog.Any("error", err))
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

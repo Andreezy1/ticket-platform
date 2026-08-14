@@ -44,13 +44,12 @@ func newApp(cfg *config.Config) (*App, error) {
 
 	refreshTokenRepo := postgres.NewRefreshTokenRepository(db)
 
-	privKey, err := token.LoadPrivateKey(cfg.AUTH_PRIVATE_KEY_PATH)
+	privKey, pubKey, err := token.LoadPrivateKey(cfg.AUTH_PRIVATE_KEY_PATH)
 	if err != nil {
 		return nil, err
 	}
-	pub := token.PublicKeyFromPrivate(privKey)
 
-	tokenManager := token.NewTokenService(privKey, pub, cfg.AUTH_ISSUER, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	tokenManager := token.NewTokenService(privKey, pubKey, cfg.AUTH_ISSUER, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 
 	rateLimiter := ratelimit.NewLimiter(rdb, cfg.RateLimitTimeout)
 

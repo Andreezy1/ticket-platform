@@ -44,7 +44,7 @@ type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-type JWKSResponse struct {
+type jWKSResponse struct {
 	Kty string `json:"kty"`
 	Crv string `json:"crv"`
 	X   string `json:"x"`
@@ -53,10 +53,10 @@ type JWKSResponse struct {
 	Alg string `json:"alg"`
 }
 
-func newJWKSResponse(domains []domain.JWK) map[string][]JWKSResponse {
-	jwks := make([]JWKSResponse, 0, len(domains))
+func newJWKSResponse(domains []domain.JWK) map[string][]jWKSResponse {
+	jwks := make([]jWKSResponse, 0, len(domains))
 	for _, d := range domains {
-		jwks = append(jwks, JWKSResponse{
+		jwks = append(jwks, jWKSResponse{
 			Kty: d.Kty,
 			Crv: d.Crv,
 			X:   d.X,
@@ -65,6 +65,6 @@ func newJWKSResponse(domains []domain.JWK) map[string][]JWKSResponse {
 			Alg: d.Alg,
 		})
 	}
-	resp := map[string][]JWKSResponse{"keys": jwks}
+	resp := map[string][]jWKSResponse{"keys": jwks}
 	return resp
 }

@@ -21,7 +21,7 @@ type Claims struct {
 	Role string `json:"role"`
 }
 
-type tokenService struct {
+type TokenService struct {
 	priv            ed25519.PrivateKey
 	pub             ed25519.PublicKey
 	kid             string
@@ -35,8 +35,8 @@ func NewTokenService(priv ed25519.PrivateKey,
 	issuer string,
 	accessTokenTTL time.Duration,
 	refreshTokenTTL time.Duration,
-) *tokenService {
-	return &tokenService{
+) *TokenService {
+	return &TokenService{
 		priv:            priv,
 		pub:             pub,
 		kid:             computeKID(pub),
@@ -46,7 +46,7 @@ func NewTokenService(priv ed25519.PrivateKey,
 	}
 }
 
-func (t *tokenService) IssueAccessToken(userID, role string) (string, error) {
+func (t *TokenService) IssueAccessToken(userID, role string) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		Role: role,
@@ -69,7 +69,7 @@ func (t *tokenService) IssueAccessToken(userID, role string) (string, error) {
 	return signed, nil
 }
 
-func (t *tokenService) GenerateRefreshToken() (plain string, hash string, err error) {
+func (t *TokenService) GenerateRefreshToken() (plain string, hash string, err error) {
 	buf := make([]byte, refreshEntropyBytes)
 	if _, err := rand.Read(buf); err != nil {
 		return "", "", fmt.Errorf("token: generate refresh: %w", err)
@@ -80,12 +80,12 @@ func (t *tokenService) GenerateRefreshToken() (plain string, hash string, err er
 	return plain, hash, nil
 }
 
-func (t *tokenService) HashRefreshToken(plain string) string {
+func (t *TokenService) HashRefreshToken(plain string) string {
 	sum := sha256.Sum256([]byte(plain))
 	return hex.EncodeToString(sum[:])
 }
 
-func (t *tokenService) JWKS() []domain.JWK {
+func (t *TokenService) JWKS() []domain.JWK {
 	x := base64.RawURLEncoding.EncodeToString(t.pub)
 	jwks := domain.JWK{
 		Kty: "OKP",

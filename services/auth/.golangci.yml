@@ -1,6 +1,6 @@
 version: "2"
 run:
-  modules-download-mode: vendor
+  modules-download-mode: mod
 linters:
   default: all
   disable:
@@ -19,6 +19,10 @@ linters:
     - wrapcheck # noisy linter.
     - noinlineerr # useless.
     - wsl # deprecated.
+    - wsl_v5 # спор о пустых строках.
+    - nlreturn # то же самое.
+    - whitespace # то же самое.
+    - varnamelen # короткие имена в узкой области — идиома Go.
   settings:
     gomodguard_v2:
       # Blocks 'replace' directives using local filesystem paths
@@ -323,6 +327,8 @@ linters:
       # Values always ignored: "1", "1.0", "0" and "0.0"
       ignored-numbers:
         - "24" # always used as 24 * time.Hour.
+        - "0o600"
+        - "0o700"
       # List of function patterns to exclude from analysis.
       # Following functions are always ignored: `time.Date`,
       # `strconv.FormatInt`, `strconv.FormatUint`, `strconv.FormatFloat`,
@@ -1044,7 +1050,7 @@ linters:
           bson: camel
           env: upperSnake
           envconfig: upperSnake
-          json: camel
+          json: snake
           mapstructure: kebab
           toml: camel
           xml: camel
@@ -1248,6 +1254,10 @@ formatters:
   enable:
     - gofmt
     - goimports
+  rules:
+    - path: cmd/genkeys/
+      linters:
+        - forbidigo
   exclusions:
     generated: lax
     paths:
