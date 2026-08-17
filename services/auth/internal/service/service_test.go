@@ -112,7 +112,7 @@ func TestUserService_Logout(t *testing.T) {
 			enterPlain:    "",
 			mutate:        func(u *stand) {},
 			wantCountCall: 0,
-			wantErr:       domain.ErrValidate,
+			wantErr:       domain.ErrInvalidRefreshToken,
 			wantArg:       "",
 		},
 	}

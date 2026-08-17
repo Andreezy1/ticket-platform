@@ -153,7 +153,7 @@ func (s *UserService) Login(ctx context.Context, user *domain.UserParams) (*doma
 
 func (s *UserService) Logout(ctx context.Context, plain string) error {
 	if plain == "" {
-		return domain.ErrValidate
+		return domain.ErrInvalidRefreshToken
 	}
 	hash := s.tokens.HashRefreshToken(plain)
 	if err := s.refreshTokenRepo.RevokeByHash(ctx, hash); err != nil {
