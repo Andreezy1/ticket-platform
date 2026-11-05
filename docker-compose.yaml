@@ -14,7 +14,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${DB_USER} -d $${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -48,7 +48,7 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ./services/auth/migrations:/migrations
+      - ./services/auth/migrations:/migrations:ro
     command:
       [
         "-path", "/migrations",
@@ -79,8 +79,61 @@ services:
       resources:
         limits:
           cpus: '2'      
-          memory: 1024M     
+          memory: 1024M
+
+  event-postgres:
+    image: postgres:17
+    container_name: ticket-platform-postgres-event
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${EVENT_DB_NAME}
+      POSTGRES_USER: ${EVENT_DB_USER}
+      POSTGRES_PASSWORD: ${EVENT_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - event_postgres_data:/var/lib/postgresql/data
+
+  event-migrate:
+    image: migrate/migrate
+    depends_on:
+      event-postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/event/migrations:/migrations:ro
+    command:
+      [
+        "-path", "/migrations",
+        "-database", "postgres://${EVENT_DB_USER}:${EVENT_DB_PASSWORD}@${EVENT_DB_HOST}:${EVENT_DB_PORT}/${EVENT_DB_NAME}?sslmode=${EVENT_DB_SSLMODE}",
+        "up"
+      ]
+
+  ticket-platform-event:
+    build: ./services/event
+    container_name: ticket-platform-event
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    depends_on:
+      event-migrate:
+        condition: service_completed_successfully
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1024M
 
 volumes:
     postgres_data:
+    event_postgres_data:
     

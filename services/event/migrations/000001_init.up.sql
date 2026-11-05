@@ -100,14 +100,19 @@ CREATE TRIGGER trg_events_updated_at
 -- нельзя добавить/перепривязать зону к мягко удалённому мероприятию —
 -- FK этого не видит, deleted_at для него просто значение в столбце
 CREATE FUNCTION fn_check_event_not_deleted() RETURNS trigger AS $$
+DECLARE
+    v_deleted_at timestamptz;
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM events
-         WHERE id = NEW.event_id AND deleted_at IS NOT NULL
-    ) THEN
+    SELECT e.deleted_at
+    INTO v_deleted_at
+    FROM events AS e
+    WHERE e.id = NEW.event_id
+    FOR UPDATE;
+    IF v_deleted_at IS NOT NULL
+    THEN
         RAISE EXCEPTION 'event % is deleted, cannot attach zone to it', NEW.event_id;
     END IF;
-    RETURN NEW;
+    RETURN NEW;1
 END;
 $$ LANGUAGE plpgsql
    SET search_path = pg_catalog, public;
