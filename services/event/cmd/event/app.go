@@ -14,6 +14,7 @@ import (
 	"github.com/Andreezy1/ticket-platform/services/event/internal/handler"
 	"github.com/Andreezy1/ticket-platform/services/event/internal/logger"
 	"github.com/Andreezy1/ticket-platform/services/event/internal/repository/postgres"
+	"github.com/Andreezy1/ticket-platform/services/event/internal/service"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -33,7 +34,9 @@ func newApp(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
-	h := handler.NewHandler()
+	venuesRepo := postgres.CreateNewVenueRepository(db)
+	venuesService := service.CreateNewVenueService(venuesRepo)
+	h := handler.NewHandler(venuesService)
 
 	return &App{
 		Server: createServer(h, cfg),

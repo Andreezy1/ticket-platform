@@ -15,7 +15,8 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_timezone_names WHERE name = NEW.timezone
     ) THEN
-        RAISE EXCEPTION 'invalid IANA timezone: %', NEW.timezone;
+        RAISE EXCEPTION 'invalid IANA timezone: %', NEW.timezone
+        USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
 END;
@@ -112,7 +113,7 @@ BEGIN
     THEN
         RAISE EXCEPTION 'event % is deleted, cannot attach zone to it', NEW.event_id;
     END IF;
-    RETURN NEW;1
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql
    SET search_path = pg_catalog, public;

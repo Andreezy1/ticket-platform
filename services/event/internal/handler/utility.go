@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -41,8 +42,16 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, body any) error {
 	if err := decoder.Decode(body); err != nil {
 		return err
 	}
-
-	return nil
+	var extra json.RawMessage
+	err := decoder.Decode(&extra)
+	switch {
+	case errors.Is(err, io.EOF):
+		return nil
+	case err == nil:
+		return errors.New("request body must contain only one JSON value")
+	default:
+		return err
+	}
 }
 
 func statusFromErr(err error) int {
